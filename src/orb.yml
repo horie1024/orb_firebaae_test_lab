@@ -1,0 +1,92 @@
+version: 2.1
+
+description: Run the test with Firebase test lab.
+
+commands:
+  test:
+    description: Run test on Firebase test lab.
+    parameters: 
+      service_account_key:
+        description: Google cloud service account key.
+        type: env_var_name
+      firebase_project_id:
+        description: Firebase project id.
+        type: env_var_name
+      type:
+        description: Test type. instrumentation or robo.
+        type: enum
+        enum: ["instrumentation", "robo"]
+      apk_path:
+        description: APK path.
+        type: string
+        default: app/build/outputs/apk/debug/app-debug.apk
+      test_apk_path:
+        description: Test APK path.
+        type: string
+        default: app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+      test_settings:
+        description: Test conditions.
+        type: string
+      bucket_name:
+        description: Bucket name for cloud storage
+        type: string
+        default: cloud-test
+    steps:
+      - run:
+          name: Store Google Service Account
+          command: echo ${<< parameters.service_account_key >>} | base64 --decode > ${HOME}/gcloud-service-key.json
+      - run:
+          name: Authorize gcloud and set config defaults
+          command: |
+              sudo gcloud auth activate-service-account --key-file=${HOME}/gcloud-service-key.json
+              sudo gcloud --quiet config set project ${<< parameters.firebase_project_id >>}
+      - run:
+          name: Test with Firebase Test Lab
+          command: |
+              sudo gcloud firebase test android run \
+                --type=<< parameters.type >> \
+                --app=<< parameters.apk_path >> \
+                --test=<< parameters.test_apk_path >> \
+                << parameters.test_settings >> \
+                --results-bucket <<parameters.bucket_name>>-${<< parameters.firebase_project_id >>}
+      - run:
+          name: Install gsutil dependency and copy test results data
+          when: always
+          command: |
+              sudo pip install -U crcmod
+              mkdir -p ~/gsutil/
+              sudo gsutil -m cp -r -U `sudo gsutil ls gs://<< parameters.bucket_name >>-${<< parameters.firebase_project_id >>} | tail -1` ~/gsutil/ | true
+      - store_artifacts:
+          path: ~/gsutil/
+      - store_test_results:
+          path: ~/gsutil/
+
+
+# Usage examples of Firebase test lab orb
+examples:
+  test:
+    description: "Send a text message with a custom message."
+    usage:
+      version: 2.1
+      orbs: 
+        firebase: horie1024/firebase-test-lab@volatile
+        jobs:
+          build:
+            docker:
+              - image: circleci/android:api-28-alpha
+            steps:
+              - checkout
+              - run:
+                  name: Download Dependencies
+                  command: ./gradlew androidDependencies
+              - run:
+                  name: Build debug APK and release APK
+                  command: |
+                    ./gradlew :app:assembleDebug
+                    ./gradlew :app:assembleDebugAndroidTest
+              - firebase/test:
+                  service_account_key: SERVICE_ACCOUNT_KEY
+                  firebase_project_id: FIREBASE_PROJECT_ID
+                  type: instrumentation
+                  test_settings: test_settings.yml:instrumentation-test
+      
