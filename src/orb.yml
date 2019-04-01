@@ -48,7 +48,7 @@ commands:
                 --app=<< parameters.apk_path >> \
                 --test=<< parameters.test_apk_path >> \
                 << parameters.test_settings >> \
-                --results-bucket <<parameters.bucket_name>>-${<< parameters.firebase_project_id >>}
+                --results-bucket <<parameters.bucket_name>>
       - run:
           name: Install gsutil dependency and copy test results data
           when: always
